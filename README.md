@@ -2,6 +2,8 @@
 
 Suwerenne i wiarygodne AI - Od dokumentów firmowych do inteligentnej bazy wiedzy w oparciu o model Bielik i Google Cloud.
 
+(link do Eskadry Bielika Misja 2)[https://github.com/kasperkalfas/eskadra-bielik-misja-opole03] 
+
 ## Wprowadzenie
 
 Tworzymy szkoleniową bazę RAG dla fikcyjnego hotelu Bielik w Warszawie, aby model mógł odpowiadać na pytania gości dotyczące pobytu, usług i organizacji obiektu.
