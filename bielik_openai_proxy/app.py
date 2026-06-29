@@ -1,3 +1,4 @@
+import json
 import os
 import time
 import uuid
@@ -77,9 +78,39 @@ def fetch_google_bearer_token(audience: str) -> str:
     return fetch_id_token(Request(), audience)
 
 
+def parse_ollama_response(response: requests.Response) -> dict[str, Any]:
+    """Parse Ollama response, handling both single JSON and NDJSON (stream chunks)."""
+    try:
+        return response.json()
+    except json.JSONDecodeError:
+        # Ollama returns NDJSON when stream=True — one JSON object per line.
+        # We merge chunks into a single final response.
+        lines = [
+            json.loads(line)
+            for line in response.text.strip().splitlines()
+            if line.strip()
+        ]
+        if not lines:
+            raise
+        # The last chunk contains the final message with done=True
+        last = lines[-1]
+        if last.get("done"):
+            return last
+        # Fallback: accumulate content from all chunks
+        merged_content = "".join(
+            chunk.get("message", {}).get("content", "")
+            for chunk in lines
+            if chunk.get("message")
+        )
+        last["message"]["content"] = merged_content
+        return last
+
+
 def call_upstream_ollama(config: ProxyConfig, payload: dict[str, Any]) -> dict[str, Any]:
     audience = config.upstream_audience or config.upstream_llm_url
     token = fetch_google_bearer_token(audience)
+    # Force stream=False — this proxy does not support SSE streaming to clients.
+    payload["stream"] = False
     response = requests.post(
         f"{config.upstream_llm_url.rstrip('/')}/api/chat",
         json=payload,
@@ -90,7 +121,7 @@ def call_upstream_ollama(config: ProxyConfig, payload: dict[str, Any]) -> dict[s
         timeout=config.request_timeout,
     )
     response.raise_for_status()
-    return response.json()
+    return parse_ollama_response(response)
 
 
 def load_config(settings: dict[str, Any] | None = None) -> ProxyConfig:
