@@ -8,17 +8,21 @@ set -euo pipefail
 
 echo "=== 1/12 Klonowanie repo ==="
 cd ~
+REPO_URL="https://github.com/brzozass/eskadra-bielik-misja2.git"
+REPO_BRANCH="feat/bielik-openai-proxy"
+
 if [ -d eskadra-bielik-misja2 ]; then
   cd eskadra-bielik-misja2
-  git pull || true
-  echo "Aktualizacja repozytorium..."
-  if ! git pull; then
-    echo "UWAGA: 'git pull' nie powiódł się. Kontynuuję z aktualną wersją lokalną."
-  fi
+  # Ensure we pull from the correct fork + branch
+  git remote set-url origin "$REPO_URL" 2>/dev/null || git remote add origin "$REPO_URL"
+  git fetch origin
+  git checkout "$REPO_BRANCH" || true
+  git pull origin "$REPO_BRANCH" || true
 else
-  git clone https://github.com/kasperkalfas/eskadra-bielik-misja2.git
+  git clone -b "$REPO_BRANCH" "$REPO_URL"
   cd eskadra-bielik-misja2
 fi
+echo "Repo ready at $(pwd), branch: $(git branch --show-current), commit: $(git rev-parse --short HEAD)"
 
 echo "=== 2/12 Tworzenie plikow proxy ==="
 # Nie nadpisujemy plikow, jesli juz istnieja w katalogu.
