@@ -11,13 +11,19 @@ if [ -z "${PROXY_SERVICE:-}" ]; then
 fi
 
 if [ -z "${PROXY_SERVICE_ACCOUNT:-}" ]; then
-  echo "Missing PROXY_SERVICE_ACCOUNT env var"
-  exit 1
+  export PROXY_SA_NAME="bielik-proxy-sa"
+  export PROXY_SERVICE_ACCOUNT="${PROXY_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+  echo "PROXY_SERVICE_ACCOUNT nieustawione, używam domyślnego: $PROXY_SERVICE_ACCOUNT"
 fi
 
 if [ -z "${TRIAL_API_KEY:-}" ]; then
-  echo "Missing TRIAL_API_KEY env var"
-  exit 1
+  echo "TRIAL_API_KEY nie znaleziono w sesji. Próba odzyskania z działającej usługi..."
+  TRIAL_API_KEY=$(gcloud run services describe "$PROXY_SERVICE" --region "$REGION" --format='value(spec.template.spec.containers[0].env.filter(name=TRIAL_API_KEY).value)' 2>/dev/null || echo "")
+  if [ -z "$TRIAL_API_KEY" ]; then
+    echo "BŁĄD: Nie można odzyskać TRIAL_API_KEY. Ustaw go ręcznie: export TRIAL_API_KEY='twój_klucz'"
+    exit 1
+  fi
+  export TRIAL_API_KEY
 fi
 
 if [ -z "${UPSTREAM_MODEL_NAME:-}" ]; then
@@ -44,4 +50,8 @@ gcloud run deploy "$PROXY_SERVICE" \
   --region "$REGION" \
   --allow-unauthenticated \
   --service-account "$PROXY_SERVICE_ACCOUNT" \
-  --set-env-vars TRIAL_API_KEY="$TRIAL_API_KEY",UPSTREAM_LLM_URL="$UPSTREAM_LLM_URL",UPSTREAM_MODEL_NAME="$UPSTREAM_MODEL_NAME",UPSTREAM_AUDIENCE="$UPSTREAM_AUDIENCE",REQUEST_TIMEOUT="$REQUEST_TIMEOUT"
+  --set-env-vars TRIAL_API_KEY="${TRIAL_API_KEY}" \
+  --set-env-vars UPSTREAM_LLM_URL="${UPSTREAM_LLM_URL}" \
+  --set-env-vars UPSTREAM_MODEL_NAME="${UPSTREAM_MODEL_NAME}" \
+  --set-env-vars UPSTREAM_AUDIENCE="${UPSTREAM_AUDIENCE}" \
+  --set-env-vars REQUEST_TIMEOUT="${REQUEST_TIMEOUT}"

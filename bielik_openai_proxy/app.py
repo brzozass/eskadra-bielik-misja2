@@ -108,6 +108,9 @@ def parse_ollama_response(response: requests.Response) -> dict[str, Any]:
 
 def call_upstream_ollama(config: ProxyConfig, payload: dict[str, Any]) -> dict[str, Any]:
     audience = config.upstream_audience or config.upstream_llm_url
+    if not audience:
+        raise ValueError("UPSTREAM_LLM_URL or UPSTREAM_AUDIENCE is not configured")
+
     token = fetch_google_bearer_token(audience)
     # Force stream=False — this proxy does not support SSE streaming to clients.
     payload["stream"] = False
