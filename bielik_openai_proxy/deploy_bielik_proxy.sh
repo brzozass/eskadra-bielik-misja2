@@ -16,12 +16,22 @@ if [ -d eskadra-bielik-misja2 ]; then
   # Ensure we pull from the correct fork + branch
   git remote set-url origin "$REPO_URL" 2>/dev/null || git remote add origin "$REPO_URL"
   git fetch origin
-  git checkout "$REPO_BRANCH" || true
-  git pull origin "$REPO_BRANCH" || true
+  # Stash any local changes so checkout/pull can't fail silently
+  git stash -u 2>/dev/null || true
+  git checkout "$REPO_BRANCH"
+  git pull origin "$REPO_BRANCH"
 else
   git clone -b "$REPO_BRANCH" "$REPO_URL"
   cd eskadra-bielik-misja2
 fi
+
+# Verify the NDJSON patch is present — abort if not
+if ! grep -q "parse_ollama_response" bielik_openai_proxy/app.py; then
+  echo "FATAL: app.py does not contain parse_ollama_response — wrong code deployed!"
+  echo "Current branch: $(git branch --show-current), commit: $(git rev-parse --short HEAD)"
+  exit 1
+fi
+
 echo "Repo ready at $(pwd), branch: $(git branch --show-current), commit: $(git rev-parse --short HEAD)"
 
 echo "=== 2/12 Tworzenie plikow proxy ==="
