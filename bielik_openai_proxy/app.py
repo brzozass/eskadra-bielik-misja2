@@ -2,10 +2,11 @@ import json
 import os
 import time
 import uuid
-from typing import Any
+from typing import Any, Iterator
 
 import requests
 from fastapi import FastAPI, Header, HTTPException
+from fastapi.responses import StreamingResponse
 from google.auth.transport.requests import Request
 from google.oauth2.id_token import fetch_id_token
 from pydantic import BaseModel, Field
@@ -127,6 +128,104 @@ def call_upstream_ollama(config: ProxyConfig, payload: dict[str, Any]) -> dict[s
     return parse_ollama_response(response)
 
 
+def _sse_chunk(payload: dict[str, Any]) -> str:
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def _build_openai_chunk(
+    chunk_id: str,
+    created: int,
+    model: str,
+    delta: dict[str, Any],
+    finish_reason: str | None,
+) -> dict[str, Any]:
+    return {
+        "id": chunk_id,
+        "object": "chat.completion.chunk",
+        "created": created,
+        "model": model,
+        "choices": [
+            {
+                "index": 0,
+                "delta": delta,
+                "finish_reason": finish_reason,
+            }
+        ],
+    }
+
+
+def stream_openai_chunks(
+    config: ProxyConfig, payload: dict[str, Any], model: str
+) -> Iterator[str]:
+    """Forward Ollama NDJSON as OpenAI-compatible SSE chunks.
+
+    Always emits a terminal `data: [DONE]\\n\\n` even on upstream failure, so
+    clients (e.g. Hermes) see a clean end-of-stream instead of an empty SSE body.
+    """
+    chunk_id = f"chatcmpl-{uuid.uuid4().hex}"
+    created = int(time.time())
+
+    yield _sse_chunk(
+        _build_openai_chunk(
+            chunk_id, created, model, {"role": "assistant"}, None
+        )
+    )
+
+    try:
+        audience = config.upstream_audience or config.upstream_llm_url
+        if not audience:
+            raise ValueError("UPSTREAM_LLM_URL or UPSTREAM_AUDIENCE is not configured")
+
+        token = fetch_google_bearer_token(audience)
+        payload["stream"] = True
+
+        with requests.post(
+            f"{config.upstream_llm_url.rstrip('/')}/api/chat",
+            json=payload,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            },
+            timeout=config.request_timeout,
+            stream=True,
+        ) as response:
+            response.raise_for_status()
+            for raw_line in response.iter_lines(decode_unicode=True):
+                if not raw_line or not raw_line.strip():
+                    continue
+                try:
+                    ollama_chunk = json.loads(raw_line)
+                except json.JSONDecodeError:
+                    continue
+
+                message = ollama_chunk.get("message") or {}
+                content = message.get("content", "")
+                done = bool(ollama_chunk.get("done"))
+
+                if content:
+                    yield _sse_chunk(
+                        _build_openai_chunk(
+                            chunk_id, created, model, {"content": content}, None
+                        )
+                    )
+
+                if done:
+                    finish_reason = ollama_chunk.get("done_reason") or "stop"
+                    yield _sse_chunk(
+                        _build_openai_chunk(
+                            chunk_id, created, model, {}, finish_reason
+                        )
+                    )
+                    break
+    except Exception as exc:
+        error_chunk = _build_openai_chunk(
+            chunk_id, created, model, {"content": f"\n[upstream error: {exc}]"}, "error"
+        )
+        yield _sse_chunk(error_chunk)
+    finally:
+        yield "data: [DONE]\n\n"
+
+
 def load_config(settings: dict[str, Any] | None = None) -> ProxyConfig:
     raw = dict(DEFAULT_SETTINGS)
     if settings:
@@ -171,13 +270,24 @@ def create_app(settings: dict[str, Any] | None = None) -> FastAPI:
     def chat_completions(
         body: ChatCompletionsRequest,
         authorization: str | None = Header(default=None),
-    ) -> dict[str, Any]:
+    ) -> Any:
         try:
             require_api_key(authorization, config.trial_api_key)
         except PermissionError as exc:
             raise HTTPException(status_code=401, detail=str(exc)) from exc
 
         payload = build_ollama_payload(body.model_dump())
+
+        if body.stream:
+            return StreamingResponse(
+                stream_openai_chunks(config, payload, body.model),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "X-Accel-Buffering": "no",
+                },
+            )
+
         try:
             upstream_response = call_upstream_ollama(config, payload)
         except Exception as exc:

@@ -156,5 +156,123 @@ class ProxyApiTest(unittest.TestCase):
         self.assertIn("upstream timeout", response.json()["detail"])
 
 
+class ChatCompletionStreamingTest(unittest.TestCase):
+    """Tests for SSE streaming path (stream:true)."""
+
+    def setUp(self):
+        self.client = TestClient(
+            create_app(
+                {
+                    "TRIAL_API_KEY": "sekret",
+                    "UPSTREAM_MODEL_NAME": "bielik-test",
+                    "UPSTREAM_LLM_URL": "https://bielik.internal",
+                }
+            )
+        )
+
+    def _parse_sse_events(self, body: str) -> list[str]:
+        events = []
+        for raw in body.split("\n\n"):
+            line = raw.strip()
+            if not line.startswith("data:"):
+                continue
+            events.append(line[len("data:"):].strip())
+        return events
+
+    def _fake_upstream_response(self, ndjson_lines: list[str]):
+        from unittest.mock import MagicMock
+        ctx = MagicMock()
+        ctx.iter_lines.return_value = iter(ndjson_lines)
+        ctx.raise_for_status.return_value = None
+        cm = MagicMock()
+        cm.__enter__.return_value = ctx
+        cm.__exit__.return_value = False
+        return cm
+
+    @patch("bielik_openai_proxy.app.fetch_google_bearer_token", return_value="fake-token")
+    @patch("bielik_openai_proxy.app.requests.post")
+    def test_chat_completion_streaming_returns_sse_chunks(self, mock_post, _mock_token):
+        ndjson = [
+            json.dumps({"message": {"role": "assistant", "content": "Wit"}, "done": False}),
+            json.dumps({"message": {"role": "assistant", "content": "aj"}, "done": False}),
+            json.dumps({"message": {"role": "assistant", "content": ""}, "done": True, "done_reason": "stop"}),
+        ]
+        mock_post.return_value = self._fake_upstream_response(ndjson)
+
+        response = self.client.post(
+            "/v1/chat/completions",
+            headers={"Authorization": "Bearer sekret"},
+            json={
+                "model": "bielik-test",
+                "messages": [{"role": "user", "content": "Powiedz cześć"}],
+                "stream": True,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.headers["content-type"].startswith("text/event-stream"))
+
+        events = self._parse_sse_events(response.text)
+        self.assertGreaterEqual(len(events), 4)
+        self.assertEqual(events[-1], "[DONE]")
+
+        json_events = [json.loads(e) for e in events[:-1]]
+        self.assertEqual(json_events[0]["choices"][0]["delta"], {"role": "assistant"})
+        content_chunks = [
+            e for e in json_events
+            if e["choices"][0]["delta"].get("content")
+        ]
+        merged = "".join(e["choices"][0]["delta"]["content"] for e in content_chunks)
+        self.assertEqual(merged, "Witaj")
+
+        final_chunk = json_events[-1]
+        self.assertEqual(final_chunk["choices"][0]["finish_reason"], "stop")
+        self.assertEqual(final_chunk["choices"][0]["delta"], {})
+
+        mock_post.assert_called_once()
+        sent_payload = mock_post.call_args.kwargs["json"]
+        self.assertTrue(sent_payload["stream"])
+
+    @patch("bielik_openai_proxy.app.fetch_google_bearer_token", return_value="fake-token")
+    @patch("bielik_openai_proxy.app.requests.post")
+    def test_chat_completion_streaming_emits_done_on_upstream_error(self, mock_post, _mock_token):
+        mock_post.side_effect = RuntimeError("upstream exploded")
+
+        response = self.client.post(
+            "/v1/chat/completions",
+            headers={"Authorization": "Bearer sekret"},
+            json={
+                "model": "bielik-test",
+                "messages": [{"role": "user", "content": "Powiedz cześć"}],
+                "stream": True,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.headers["content-type"].startswith("text/event-stream"))
+
+        events = self._parse_sse_events(response.text)
+        self.assertEqual(events[-1], "[DONE]")
+
+        json_events = [json.loads(e) for e in events[:-1]]
+        error_chunks = [
+            e for e in json_events
+            if e["choices"][0].get("finish_reason") == "error"
+        ]
+        self.assertEqual(len(error_chunks), 1)
+        self.assertIn("upstream exploded", error_chunks[0]["choices"][0]["delta"]["content"])
+
+    def test_chat_completion_streaming_requires_api_key(self):
+        response = self.client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "bielik-test",
+                "messages": [{"role": "user", "content": "Hi"}],
+                "stream": True,
+            },
+        )
+        self.assertEqual(response.status_code, 401)
+
+
 if __name__ == "__main__":
     unittest.main()
