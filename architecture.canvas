@@ -1,0 +1,167 @@
+{
+  "nodes": [
+    {
+      "id": "a1b2c3d4e5f67890",
+      "type": "text",
+      "x": 0,
+      "y": 0,
+      "width": 300,
+      "height": 120,
+      "text": "# User\n\nWeb Interface\n`orchestration/static/index.html`",
+      "color": "1"
+    },
+    {
+      "id": "b2c3d4e5f6789012",
+      "type": "text",
+      "x": 400,
+      "y": 0,
+      "width": 350,
+      "height": 180,
+      "text": "# Orchestration API\n\nFastAPI Application\n`orchestration/main.py`\n\nEndpoints:\n- `GET /` - Web UI\n- `POST /ingest` - Ingest CSV\n- `POST /ask` - RAG query\n- `POST /ask_direct` - Direct LLM",
+      "color": "4"
+    },
+    {
+      "id": "c3d4e5f678901234",
+      "type": "text",
+      "x": 400,
+      "y": 250,
+      "width": 320,
+      "height": 150,
+      "text": "# Embedding Model\n\nEmbeddingGemma\nCloud Run Service\n`embedding_model/`\n\nConverts text to vectors",
+      "color": "3"
+    },
+    {
+      "id": "d4e5f67890123456",
+      "type": "text",
+      "x": 400,
+      "y": 480,
+      "width": 320,
+      "height": 150,
+      "text": "# LLM Model\n\nBielik (Polish LLM)\nCloud Run Service\n`llm/`\n\nGenerates responses",
+      "color": "5"
+    },
+    {
+      "id": "e5f6789012345678",
+      "type": "text",
+      "x": 800,
+      "y": 250,
+      "width": 350,
+      "height": 180,
+      "text": "# Vector Store\n\nBigQuery with Vector Search\n`vector_store/`\n\nSchema:\n- `id` (STRING)\n- `content` (STRING)\n- `embedding` (FLOAT64 REPEATED)",
+      "color": "2"
+    },
+    {
+      "id": "f678901234567890",
+      "type": "text",
+      "x": 800,
+      "y": 480,
+      "width": 320,
+      "height": 120,
+      "text": "# Bielik OpenAI Proxy\n\nOptional proxy layer\n`bielik_openai_proxy/`\n\nOpenAI-compatible API",
+      "color": "6"
+    },
+    {
+      "id": "g7890123456789012",
+      "type": "text",
+      "x": 0,
+      "y": 250,
+      "width": 280,
+      "height": 100,
+      "text": "# Data Source\n\nCSV files\n`hotel_rules.csv`\n\nHotel rules & policies",
+      "color": "1"
+    },
+    {
+      "id": "h8901234567890123",
+      "type": "group",
+      "x": -50,
+      "y": -50,
+      "width": 1250,
+      "height": 700,
+      "label": "Eskadra Bielik - RAG Architecture",
+      "color": "4"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge1",
+      "fromNode": "a1b2c3d4e5f67890",
+      "fromSide": "right",
+      "toNode": "b2c3d4e5f6789012",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "label": "HTTP Request"
+    },
+    {
+      "id": "edge2",
+      "fromNode": "b2c3d4e5f6789012",
+      "fromSide": "bottom",
+      "toNode": "c3d4e5f678901234",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "label": "Text → Vector"
+    },
+    {
+      "id": "edge3",
+      "fromNode": "c3d4e5f678901234",
+      "fromSide": "right",
+      "toNode": "e5f6789012345678",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "label": "Vector Search"
+    },
+    {
+      "id": "edge4",
+      "fromNode": "e5f6789012345678",
+      "fromSide": "left",
+      "toNode": "b2c3d4e5f6789012",
+      "toSide": "right",
+      "toEnd": "arrow",
+      "label": "Context Docs"
+    },
+    {
+      "id": "edge5",
+      "fromNode": "b2c3d4e5f6789012",
+      "fromSide": "bottom",
+      "toNode": "d4e5f67890123456",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "label": "Prompt + Context"
+    },
+    {
+      "id": "edge6",
+      "fromNode": "d4e5f67890123456",
+      "fromSide": "top",
+      "toNode": "b2c3d4e5f6789012",
+      "toSide": "bottom",
+      "toEnd": "arrow",
+      "label": "Generated Response"
+    },
+    {
+      "id": "edge7",
+      "fromNode": "b2c3d4e5f6789012",
+      "fromSide": "left",
+      "toNode": "a1b2c3d4e5f67890",
+      "toSide": "right",
+      "toEnd": "arrow",
+      "label": "HTTP Response"
+    },
+    {
+      "id": "edge8",
+      "fromNode": "g7890123456789012",
+      "fromSide": "right",
+      "toNode": "b2c3d4e5f6789012",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "label": "CSV Upload (/ingest)"
+    },
+    {
+      "id": "edge9",
+      "fromNode": "d4e5f67890123456",
+      "fromSide": "right",
+      "toNode": "f678901234567890",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "label": "Optional Proxy"
+    }
+  ]
+}

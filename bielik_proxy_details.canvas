@@ -1,0 +1,176 @@
+{
+  "nodes": [
+    {
+      "id": "client1",
+      "type": "text",
+      "x": 0,
+      "y": 0,
+      "width": 250,
+      "height": 100,
+      "text": "# External Client\n\nHermes / OpenAI SDK\n\nUses OpenAI-compatible API",
+      "color": "1"
+    },
+    {
+      "id": "proxy1",
+      "type": "text",
+      "x": 350,
+      "y": 0,
+      "width": 400,
+      "height": 200,
+      "text": "# Bielik OpenAI Proxy\n\nFastAPI Application\n`bielik_openai_proxy/app.py`\n\nEndpoints:\n- `GET /healthz`\n- `GET /v1/models`\n- `POST /v1/chat/completions`",
+      "color": "4"
+    },
+    {
+      "id": "auth1",
+      "type": "text",
+      "x": 350,
+      "y": 250,
+      "width": 380,
+      "height": 150,
+      "text": "# Authentication Layer\n\n1. Validates `TRIAL_API_KEY`\n2. Fetches Google ID Token\n3. Uses `PROXY_SERVICE_ACCOUNT`\n4. IAM: `roles/run.invoker`",
+      "color": "3"
+    },
+    {
+      "id": "transform1",
+      "type": "text",
+      "x": 350,
+      "y": 450,
+      "width": 380,
+      "height": 180,
+      "text": "# Request/Response Transform\n\n**Request:** OpenAI → Ollama\n- Converts chat.completions format\n- Handles streaming config\n\n**Response:** Ollama → OpenAI\n- Parses NDJSON streams\n- Builds OpenAI-compatible chunks\n- Adds proper metadata",
+      "color": "5"
+    },
+    {
+      "id": "upstream1",
+      "type": "text",
+      "x": 850,
+      "y": 250,
+      "width": 350,
+      "height": 220,
+      "text": "# Upstream Service\n\nPrivate Bielik LLM\nCloud Run Service\n\n**Location:** europe-west1\n(St. Ghislain, Belgium)\n\n**Hardware:**\n- 1x NVIDIA L4 GPU\n- 8 vCPU\n- 16GB RAM\n\n**Model:**\nSpeakLeash/bielik-4.5b-v3.0-instruct:Q8_0\n(8-bit quantized)",
+      "color": "2"
+    },
+    {
+      "id": "config1",
+      "type": "text",
+      "x": 0,
+      "y": 250,
+      "width": 250,
+      "height": 180,
+      "text": "# Configuration\n\nEnvironment Variables:\n- `TRIAL_API_KEY`\n- `UPSTREAM_LLM_URL`\n- `UPSTREAM_MODEL_NAME`\n- `PROXY_SERVICE_ACCOUNT`\n- `REQUEST_TIMEOUT` (600s)",
+      "color": "6"
+    },
+    {
+      "id": "stream1",
+      "type": "text",
+      "x": 850,
+      "y": 450,
+      "width": 320,
+      "height": 150,
+      "text": "# Streaming Handler\n\n**Non-streaming:**\n- Forces stream=False upstream\n- Merges chunks\n- Returns single response\n\n**Streaming:**\n- Forwards SSE chunks\n- Emits terminal [DONE]",
+      "color": "1"
+    },
+    {
+      "id": "group1",
+      "type": "group",
+      "x": -50,
+      "y": -50,
+      "width": 1300,
+      "height": 700,
+      "label": "Bielik OpenAI Proxy - Internal Architecture",
+      "color": "4"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge1",
+      "fromNode": "client1",
+      "fromSide": "right",
+      "toNode": "proxy1",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "label": "OpenAI API Request"
+    },
+    {
+      "id": "edge2",
+      "fromNode": "proxy1",
+      "fromSide": "bottom",
+      "toNode": "auth1",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "label": "Validate & Get Token"
+    },
+    {
+      "id": "edge3",
+      "fromNode": "config1",
+      "fromSide": "right",
+      "toNode": "auth1",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "label": "Config"
+    },
+    {
+      "id": "edge4",
+      "fromNode": "auth1",
+      "fromSide": "right",
+      "toNode": "upstream1",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "label": "Google ID Token"
+    },
+    {
+      "id": "edge5",
+      "fromNode": "proxy1",
+      "fromSide": "bottom",
+      "toNode": "transform1",
+      "toSide": "top",
+      "toEnd": "arrow",
+      "label": "Transform Request"
+    },
+    {
+      "id": "edge6",
+      "fromNode": "transform1",
+      "fromSide": "right",
+      "toNode": "upstream1",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "label": "Ollama Format"
+    },
+    {
+      "id": "edge7",
+      "fromNode": "upstream1",
+      "fromSide": "right",
+      "toNode": "stream1",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "label": "NDJSON Stream"
+    },
+    {
+      "id": "edge8",
+      "fromNode": "stream1",
+      "fromSide": "top",
+      "toNode": "transform1",
+      "toSide": "bottom",
+      "toEnd": "arrow",
+      "label": "Processed Chunks"
+    },
+    {
+      "id": "edge9",
+      "fromNode": "transform1",
+      "fromSide": "top",
+      "toNode": "proxy1",
+      "toSide": "bottom",
+      "toEnd": "arrow",
+      "label": "OpenAI Format"
+    },
+    {
+      "id": "edge10",
+      "fromNode": "proxy1",
+      "fromSide": "left",
+      "toNode": "client1",
+      "toSide": "right",
+      "toEnd": "arrow",
+      "label": "OpenAI Response"
+    }
+  ]
+}
